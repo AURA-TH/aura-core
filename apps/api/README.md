@@ -64,6 +64,37 @@ All business endpoints require a Bearer JWT. Routes with `:businessId` are addit
 
 **Thai-first creation defaults:** `locale=th-TH`, `timezone=Asia/Bangkok`, `currency=THB`, `language=TH` — applied unless the create DTO overrides them (validated). `slug` is optional; lowercase letters, numbers, and hyphens only.
 
+### Product knowledge (DEV-005)
+
+Nested under a business; require Bearer JWT + `BusinessAccessGuard`. Write routes add `BusinessRolesGuard` + `@Roles(OWNER, ADMIN, STAFF)`. Reads are open to any member (incl. VIEWER and AI_AGENT); AI_AGENT cannot write in this sprint.
+
+**Products** — `/api/v1/businesses/:businessId/products`
+
+| Method | Path | Roles | Notes |
+| --- | --- | --- | --- |
+| POST | `/products` | OWNER, ADMIN, STAFF | Create; 409 on duplicate sku |
+| GET | `/products` | any member | List (paginated, filterable) |
+| GET | `/products/:productId` | any member | One; 404 if not in business / archived |
+| PATCH | `/products/:productId` | OWNER, ADMIN, STAFF | Update; 409 on sku clash |
+| POST | `/products/:productId/archive` | OWNER, ADMIN, STAFF | Soft delete (`deletedAt`, `isActive=false`) |
+
+**Product FAQs** — `/api/v1/businesses/:businessId/products/:productId/faqs`
+
+| Method | Path | Roles | Notes |
+| --- | --- | --- | --- |
+| POST | `/faqs` | OWNER, ADMIN, STAFF | Create under product |
+| GET | `/faqs` | any member | List non-deleted |
+| PATCH | `/faqs/:faqId` | OWNER, ADMIN, STAFF | Update |
+| POST | `/faqs/:faqId/archive` | OWNER, ADMIN, STAFF | Soft delete (`deletedAt`) |
+
+**Money:** `price` (required on create) and `cost` (optional) are **decimal strings** only (e.g. `"399.00"`), non-negative, max 2 decimals; returned as strings. JS float numbers are rejected. `stockQuantity` is a non-negative integer.
+
+**List query params:** `page` (default 1), `limit` (default 20, max 100), `search` (name contains), `brand`, `category`. Response: `{ data: [...], pagination: { page, limit, total, totalPages } }`.
+
+**sku:** trimmed; empty becomes `null`; duplicate non-null sku within a business → **409 CONFLICT**. *Known limitation:* a soft-deleted product still occupies its sku (unique constraint includes archived rows), so its sku cannot be reused until a future restore/free-sku feature exists.
+
+**Tenancy:** every query filters by `businessId`; FAQs additionally scope by `productId`. Invalid/foreign `:productId` or `:faqId` (incl. malformed UUIDs) → **404**, never a 500. A FAQ is never reachable via the wrong product.
+
 ## Error format
 
 All errors use a stable envelope (success responses are plain DTOs):
@@ -124,6 +155,31 @@ curl -s -X PATCH http://localhost:3001/api/v1/businesses/<BUSINESS_ID> \
 
 # 9. List members
 curl -s http://localhost:3001/api/v1/businesses/<BUSINESS_ID>/members \
+  -H "Authorization: Bearer <TOKEN>"
+
+# 10. Create a product (OWNER/ADMIN/STAFF; price is a string)
+curl -s -X POST http://localhost:3001/api/v1/businesses/<BUSINESS_ID>/products \
+  -H "Authorization: Bearer <TOKEN>" -H "Content-Type: application/json" \
+  -d '{"name":"เสื้อยืดสีขาว","price":"399.00","sku":"TS-WHITE-001","brand":"AURA","category":"apparel","stockQuantity":50}'
+
+# 11. List products (pagination + filter)
+curl -s "http://localhost:3001/api/v1/businesses/<BUSINESS_ID>/products?page=1&limit=20&category=apparel" \
+  -H "Authorization: Bearer <TOKEN>"
+
+# 12. Get / update / archive a product
+curl -s http://localhost:3001/api/v1/businesses/<BUSINESS_ID>/products/<PRODUCT_ID> \
+  -H "Authorization: Bearer <TOKEN>"
+curl -s -X PATCH http://localhost:3001/api/v1/businesses/<BUSINESS_ID>/products/<PRODUCT_ID> \
+  -H "Authorization: Bearer <TOKEN>" -H "Content-Type: application/json" \
+  -d '{"price":"349.00","stockQuantity":40}'
+curl -s -X POST http://localhost:3001/api/v1/businesses/<BUSINESS_ID>/products/<PRODUCT_ID>/archive \
+  -H "Authorization: Bearer <TOKEN>"
+
+# 13. Product FAQs
+curl -s -X POST http://localhost:3001/api/v1/businesses/<BUSINESS_ID>/products/<PRODUCT_ID>/faqs \
+  -H "Authorization: Bearer <TOKEN>" -H "Content-Type: application/json" \
+  -d '{"question":"ผ้าเป็นแบบไหน?","answer":"ผ้าฝ้าย 100%"}'
+curl -s http://localhost:3001/api/v1/businesses/<BUSINESS_ID>/products/<PRODUCT_ID>/faqs \
   -H "Authorization: Bearer <TOKEN>"
 ```
 
