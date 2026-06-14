@@ -1,0 +1,8 @@
+{
+  "name": "@aura/brain",
+  "version": "0.0.1",
+  "private": true,
+  "description": "AI reasoning and reply-generation core.",
+  "main": "src/index.ts",
+  "types": "src/index.ts"
+}

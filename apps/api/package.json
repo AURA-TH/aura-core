@@ -1,0 +1,6 @@
+{
+  "name": "@aura/api",
+  "version": "0.0.1",
+  "private": true,
+  "description": "Backend modular monolith (NestJS + TypeScript). Framework scaffolding added in a later sprint."
+}

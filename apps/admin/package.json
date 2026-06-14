@@ -1,0 +1,6 @@
+{
+  "name": "@aura/admin",
+  "version": "0.0.1",
+  "private": true,
+  "description": "Internal admin console (Next.js + TypeScript). Framework scaffolding added in a later sprint."
+}
