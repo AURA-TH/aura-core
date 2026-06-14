@@ -95,6 +95,25 @@ Nested under a business; require Bearer JWT + `BusinessAccessGuard`. Write route
 
 **Tenancy:** every query filters by `businessId`; FAQs additionally scope by `productId`. Invalid/foreign `:productId` or `:faqId` (incl. malformed UUIDs) → **404**, never a 500. A FAQ is never reachable via the wrong product.
 
+### Customers, conversations & messages (DEV-006)
+
+Nested under a business; require Bearer JWT + `BusinessAccessGuard`. Writes add `BusinessRolesGuard` + `@Roles(OWNER, ADMIN, STAFF)`. Reads open to any member (incl. AI_AGENT); AI_AGENT cannot write this sprint.
+
+**Customers** — `/api/v1/businesses/:businessId/customers`: `POST`, `GET` (list), `GET /:customerId`, `PATCH /:customerId`, `POST /:customerId/archive` (sets `deletedAt`).
+
+List params: `page` (1), `limit` (20, max 100), `search` (name/email/phone, case-insensitive), `sourceChannel`, `province`, `nextFollowUpBefore` (ISO date). `customerScore` is an integer 0–100. Date fields (`lastContactAt`, `lastPurchaseAt`, `nextFollowUpAt`) are ISO strings.
+
+**Conversations** — `/api/v1/businesses/:businessId/conversations`: `POST`, `GET` (list), `GET /:conversationId`, `PATCH /:conversationId`, `POST /:conversationId/archive` (sets `deletedAt` + `status=ARCHIVED`).
+
+List params: `page`, `limit` (20, max 100), `status`, `salesStage`, `channel`, `customerId`. `customerId` is optional; if provided it must belong to the same business or the request → **404**.
+
+**Messages** — `/api/v1/businesses/:businessId/conversations/:conversationId/messages`: `POST`, `GET` (list). **Append-only** — no edit/delete/archive. List params: `page`, `limit` (50, max 100).
+
+- DEV-006 clients may only create messages with `sender` ∈ {`CUSTOMER`, `USER`} and `type` = `TEXT`. `AI`/`SYSTEM` senders and non-text types are reserved for internal services later.
+- Creating a message runs in a transaction: insert `Message`, bump `Conversation.lastMessageAt`, and (if linked) bump `Customer.lastContactAt`.
+
+**Pagination:** `limit > 100` returns **`VALIDATION_ERROR`** (no silent clamp). **Tenancy:** every query scoped by `businessId`; messages additionally by `conversationId`; invalid/foreign UUIDs → 404.
+
 ## Error format
 
 All errors use a stable envelope (success responses are plain DTOs):
@@ -180,6 +199,31 @@ curl -s -X POST http://localhost:3001/api/v1/businesses/<BUSINESS_ID>/products/<
   -H "Authorization: Bearer <TOKEN>" -H "Content-Type: application/json" \
   -d '{"question":"ผ้าเป็นแบบไหน?","answer":"ผ้าฝ้าย 100%"}'
 curl -s http://localhost:3001/api/v1/businesses/<BUSINESS_ID>/products/<PRODUCT_ID>/faqs \
+  -H "Authorization: Bearer <TOKEN>"
+
+# 14. Create a customer
+curl -s -X POST http://localhost:3001/api/v1/businesses/<BUSINESS_ID>/customers \
+  -H "Authorization: Bearer <TOKEN>" -H "Content-Type: application/json" \
+  -d '{"name":"สมชาย","phone":"0812345678","sourceChannel":"LINE","province":"กรุงเทพ","customerScore":80}'
+
+# 15. List customers (filter + search)
+curl -s "http://localhost:3001/api/v1/businesses/<BUSINESS_ID>/customers?search=สมชาย&sourceChannel=LINE&page=1&limit=20" \
+  -H "Authorization: Bearer <TOKEN>"
+
+# 16. Create a conversation (optionally linked to a customer in the same business)
+curl -s -X POST http://localhost:3001/api/v1/businesses/<BUSINESS_ID>/conversations \
+  -H "Authorization: Bearer <TOKEN>" -H "Content-Type: application/json" \
+  -d '{"customerId":"<CUSTOMER_ID>","channel":"LINE","subject":"สอบถามสินค้า"}'
+
+# 17. List conversations (filter by status / stage)
+curl -s "http://localhost:3001/api/v1/businesses/<BUSINESS_ID>/conversations?status=OPEN&salesStage=NEW_LEAD" \
+  -H "Authorization: Bearer <TOKEN>"
+
+# 18. Append messages (CUSTOMER or USER, TEXT only) and list them
+curl -s -X POST http://localhost:3001/api/v1/businesses/<BUSINESS_ID>/conversations/<CONVERSATION_ID>/messages \
+  -H "Authorization: Bearer <TOKEN>" -H "Content-Type: application/json" \
+  -d '{"sender":"CUSTOMER","content":"สินค้ามีสต๊อกไหมครับ"}'
+curl -s "http://localhost:3001/api/v1/businesses/<BUSINESS_ID>/conversations/<CONVERSATION_ID>/messages?page=1&limit=50" \
   -H "Authorization: Bearer <TOKEN>"
 ```
 

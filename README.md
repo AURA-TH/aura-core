@@ -13,8 +13,9 @@ The first product is an **AI Customer Service Employee** for online stores. This
 | DEV-003 | API bootstrap (NestJS), JWT auth foundation, health, Prisma service | ✅ Complete |
 | DEV-004 | Business workspace + tenant permission foundation (membership & role guards) | ✅ Complete |
 | DEV-005 | Product knowledge & FAQ APIs (business-scoped, role-gated) | ✅ Complete |
+| DEV-006 | Customer, conversation & message APIs (business-scoped, role-gated) | ✅ Complete |
 
-The backend (`apps/api`) currently exposes auth, business-workspace, and product-knowledge endpoints with multi-tenant access control. Conversation/customer domains and the AI layer are not yet implemented.
+The backend (`apps/api`) currently exposes auth, business-workspace, product-knowledge, and customer/conversation/message endpoints with multi-tenant access control. The AI layer (reply generation, memory extraction) is not yet implemented.
 
 ## Localization — Thai-First
 
@@ -105,7 +106,7 @@ pnpm --filter @aura/api start:dev
 # -> http://localhost:3001/api/v1
 ```
 
-Endpoints in this sprint: `GET /api/v1/health`, auth routes (`/auth/*`), business-workspace routes (`/businesses/*`), and product-knowledge routes (`/businesses/:businessId/products/*` and `.../faqs/*`). See [`apps/api/README.md`](apps/api/README.md) for env vars, guard notes, and curl examples.
+Endpoints in this sprint: `GET /api/v1/health`, auth routes (`/auth/*`), business-workspace routes (`/businesses/*`), product-knowledge routes (`/businesses/:businessId/products/*` and `.../faqs/*`), and customer/conversation/message routes (`/businesses/:businessId/customers/*`, `.../conversations/*`, `.../conversations/:conversationId/messages`). See [`apps/api/README.md`](apps/api/README.md) for env vars, guard notes, and curl examples.
 
 ## Verify the workspace
 
