@@ -85,6 +85,18 @@ pnpm --filter @aura/database db:migrate
 
 `.env.example` ships the Thai-first defaults: `DEFAULT_LOCALE=th-TH`, `DEFAULT_TIMEZONE=Asia/Bangkok`, `DEFAULT_CURRENCY=THB`, `DEFAULT_LANGUAGE=TH`. Timestamps are stored in UTC; `Asia/Bangkok` is a presentation default. See [`packages/database/README.md`](packages/database/README.md) for the full schema conventions.
 
+## Run the API
+
+The backend ([`apps/api`](apps/api), NestJS) serves all routes under `/api/v1`.
+
+```bash
+# after db:generate + .env setup
+pnpm --filter @aura/api start:dev
+# -> http://localhost:3001/api/v1
+```
+
+Endpoints in this sprint: `GET /api/v1/health`, `POST /api/v1/auth/register`, `POST /api/v1/auth/login`, `GET /api/v1/auth/me`. See [`apps/api/README.md`](apps/api/README.md) for env vars and curl examples.
+
 ## Verify the workspace
 
 ```bash
