@@ -4,7 +4,16 @@
 
 The first product is an **AI Customer Service Employee** for online stores. This repository is a **modular monolith** organized as a pnpm monorepo.
 
-> Sprint DEV-001 scope: initial monorepo structure only. No framework scaffolding, no database schema, no business logic yet.
+## Project status
+
+| Sprint | Scope | Status |
+| --- | --- | --- |
+| DEV-001 | Monorepo structure (apps + packages, configs, docs) | ✅ Complete |
+| DEV-002 | Database foundation: Prisma schema, enums, relations | ✅ Complete |
+| DEV-003 | API bootstrap (NestJS), JWT auth foundation, health, Prisma service | ✅ Complete |
+| DEV-004 | Business workspace + tenant permission foundation (membership & role guards) | ✅ Complete |
+
+The backend (`apps/api`) currently exposes auth and business-workspace endpoints with multi-tenant access control. Customer/product/conversation domains and the AI layer are not yet implemented.
 
 ## Localization — Thai-First
 
@@ -95,7 +104,7 @@ pnpm --filter @aura/api start:dev
 # -> http://localhost:3001/api/v1
 ```
 
-Endpoints in this sprint: `GET /api/v1/health`, `POST /api/v1/auth/register`, `POST /api/v1/auth/login`, `GET /api/v1/auth/me`. See [`apps/api/README.md`](apps/api/README.md) for env vars and curl examples.
+Endpoints in this sprint: `GET /api/v1/health`, `POST /api/v1/auth/register`, `POST /api/v1/auth/login`, `GET /api/v1/auth/me`, plus business-workspace routes under `/api/v1/businesses` (create, list, get, update, members). See [`apps/api/README.md`](apps/api/README.md) for env vars, guard notes, and curl examples.
 
 ## Verify the workspace
 

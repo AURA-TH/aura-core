@@ -3,14 +3,11 @@ import { ActorType } from "@aura/shared";
 import { PrismaService } from "../prisma/prisma.service";
 
 /**
- * Skeleton for writing AuditLog entries.
+ * Writes AuditLog entries for business-scoped actions.
  *
- * INTENTIONALLY DEFERRED (DEV-003): no audit logs are written for auth yet.
- * The AuditLog model requires `businessId`, but auth is user-identity scoped
- * and has no business context. Audit logging will be wired up once
- * business-scoped actions exist (e.g. when BusinessMember scoping lands).
- *
- * The method signature is defined now so later sprints have a stable seam.
+ * Best-effort (DEV-004 decision): a failure to write an audit entry MUST NOT
+ * fail the main user action. Errors are logged server-side and swallowed.
+ * AuditLog is immutable — writeLog only ever creates, never updates/deletes.
  */
 export interface WriteAuditLogInput {
   businessId: string;
@@ -29,15 +26,30 @@ export class AuditService {
   constructor(private readonly prisma: PrismaService) {}
 
   /**
-   * Persist an audit log entry. Requires a businessId, so this is not called
-   * from auth flows yet. Implementation will be completed in a later sprint.
+   * Persist an audit log entry. Best-effort: never throws to the caller.
+   * Returns true if written, false if the write failed (already logged).
    */
-  async writeLog(input: WriteAuditLogInput): Promise<void> {
-    // Deferred: see class doc. Left as a no-op seam to avoid premature,
-    // business-less audit writes. When enabled:
-    //   await this.prisma.auditLog.create({ data: { ...input } });
-    this.logger.debug(
-      `writeLog deferred (action=${input.action}, business=${input.businessId})`,
-    );
+  async writeLog(input: WriteAuditLogInput): Promise<boolean> {
+    try {
+      await this.prisma.auditLog.create({
+        data: {
+          businessId: input.businessId,
+          actorType: input.actorType,
+          actorId: input.actorId ?? null,
+          action: input.action,
+          entityType: input.entityType ?? null,
+          entityId: input.entityId ?? null,
+          metadata: (input.metadata ?? undefined) as object | undefined,
+        },
+      });
+      return true;
+    } catch (error) {
+      // Swallow: audit failure must not break the user action.
+      this.logger.error(
+        `Audit write failed (action=${input.action}, business=${input.businessId})`,
+        error instanceof Error ? error.stack : String(error),
+      );
+      return false;
+    }
   }
 }

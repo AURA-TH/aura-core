@@ -45,6 +45,25 @@ The API logs `http://localhost:3001/api/v1` on boot (port from `API_PORT`).
 | POST | `/api/v1/auth/login` | – | Authenticate (returns user + accessToken) |
 | GET | `/api/v1/auth/me` | Bearer JWT | Current user |
 
+### Business workspace (DEV-004)
+
+All business endpoints require a Bearer JWT. Routes with `:businessId` are additionally protected by `BusinessAccessGuard` (membership check).
+
+| Method | Path | Guards | Description |
+| --- | --- | --- | --- |
+| POST | `/api/v1/businesses` | JWT | Create a business; caller becomes `OWNER` (transactional) |
+| GET | `/api/v1/businesses` | JWT | List businesses the caller is a (non-deleted) member of |
+| GET | `/api/v1/businesses/:businessId` | JWT + Access | Get one business + caller's role |
+| PATCH | `/api/v1/businesses/:businessId` | JWT + Access + Roles(OWNER, ADMIN) | Update business profile |
+| GET | `/api/v1/businesses/:businessId/members` | JWT + Access | List non-deleted members |
+
+**Guards & tenancy:**
+- `BusinessAccessGuard` runs after `JwtAuthGuard`, reads `:businessId`, confirms the caller is a non-deleted member of a non-deleted business, and attaches `{ businessId, userId, role }` to the request. Non-members (or missing/deleted businesses) get **404** — identical responses prevent business enumeration.
+- `BusinessRolesGuard` reads `@Roles(...)`, requires the access guard's context, **fails closed** if context is missing, and returns **403** when the member's role isn't allowed. Guard order is `JwtAuthGuard, BusinessAccessGuard, BusinessRolesGuard`.
+- `@CurrentBusiness()` exposes the resolved membership context to handlers.
+
+**Thai-first creation defaults:** `locale=th-TH`, `timezone=Asia/Bangkok`, `currency=THB`, `language=TH` — applied unless the create DTO overrides them (validated). `slug` is optional; lowercase letters, numbers, and hyphens only.
+
 ## Error format
 
 All errors use a stable envelope (success responses are plain DTOs):
@@ -84,6 +103,28 @@ curl -s -X POST http://localhost:3001/api/v1/auth/login \
 # 4. Me (replace <TOKEN> with accessToken from step 2 or 3)
 curl -s http://localhost:3001/api/v1/auth/me \
   -H "Authorization: Bearer <TOKEN>"
+
+# 5. Create a business (caller becomes OWNER)
+curl -s -X POST http://localhost:3001/api/v1/businesses \
+  -H "Authorization: Bearer <TOKEN>" -H "Content-Type: application/json" \
+  -d '{"name":"ร้านตัวอย่าง","businessType":"online_store"}'
+
+# 6. List my businesses
+curl -s http://localhost:3001/api/v1/businesses \
+  -H "Authorization: Bearer <TOKEN>"
+
+# 7. Get one business (member only; non-members get 404)
+curl -s http://localhost:3001/api/v1/businesses/<BUSINESS_ID> \
+  -H "Authorization: Bearer <TOKEN>"
+
+# 8. Update business (OWNER/ADMIN only; others get 403)
+curl -s -X PATCH http://localhost:3001/api/v1/businesses/<BUSINESS_ID> \
+  -H "Authorization: Bearer <TOKEN>" -H "Content-Type: application/json" \
+  -d '{"toneOfVoice":"friendly","description":"ร้านขายของออนไลน์"}'
+
+# 9. List members
+curl -s http://localhost:3001/api/v1/businesses/<BUSINESS_ID>/members \
+  -H "Authorization: Bearer <TOKEN>"
 ```
 
 ## Environment
@@ -99,5 +140,6 @@ curl -s http://localhost:3001/api/v1/auth/me \
 
 ## Intentionally deferred
 
-- **Auth audit logging.** `AuditLog` requires `businessId`, but auth is user-identity scoped with no business context. `AuditService.writeLog` is a no-op seam until business-scoped actions exist.
-- No refresh tokens, email verification, password reset, RBAC, rate limiting, or `businessId` enforcement yet.
+- **Audit logging is now active for business-scoped actions** (`business.created`, `business.updated`, `business.member.owner_created`). Writes are best-effort: a logging failure is recorded server-side but never fails the user action.
+- No team invitation workflow/emails, no add/remove/role-change member endpoints, no business deletion or ownership transfer.
+- No refresh tokens, email verification, password reset, rate limiting, or per-resource RBAC beyond the membership + role guards.
