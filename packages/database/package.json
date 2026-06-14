@@ -2,7 +2,21 @@
   "name": "@aura/database",
   "version": "0.0.1",
   "private": true,
-  "description": "Prisma client and schema (shared data layer). Schema added in a later sprint.",
+  "description": "Prisma client and schema (shared data layer).",
   "main": "src/index.ts",
-  "types": "src/index.ts"
+  "types": "src/index.ts",
+  "scripts": {
+    "db:generate": "prisma generate",
+    "db:migrate": "prisma migrate dev",
+    "db:deploy": "prisma migrate deploy",
+    "db:studio": "prisma studio",
+    "db:format": "prisma format",
+    "db:validate": "prisma validate"
+  },
+  "dependencies": {
+    "@prisma/client": "^5.22.0"
+  },
+  "devDependencies": {
+    "prisma": "^5.22.0"
+  }
 }

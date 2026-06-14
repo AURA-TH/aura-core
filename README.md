@@ -60,12 +60,30 @@ aura-core/
 
 - Node.js >= 20.9.0
 - pnpm >= 9 (`npm install -g pnpm`)
+- PostgreSQL (for the database layer)
 
 ## Install
 
 ```bash
 pnpm install
 ```
+
+## Database & Environment
+
+The data layer lives in [`packages/database`](packages/database) (Prisma + PostgreSQL).
+
+```bash
+# 1. Create your env file from the example and set DATABASE_URL
+cp .env.example .env
+
+# 2. Generate the Prisma client
+pnpm --filter @aura/database db:generate
+
+# 3. Create + apply the first migration (needs a running PostgreSQL)
+pnpm --filter @aura/database db:migrate
+```
+
+`.env.example` ships the Thai-first defaults: `DEFAULT_LOCALE=th-TH`, `DEFAULT_TIMEZONE=Asia/Bangkok`, `DEFAULT_CURRENCY=THB`, `DEFAULT_LANGUAGE=TH`. Timestamps are stored in UTC; `Asia/Bangkok` is a presentation default. See [`packages/database/README.md`](packages/database/README.md) for the full schema conventions.
 
 ## Verify the workspace
 

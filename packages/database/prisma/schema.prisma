@@ -1,0 +1,540 @@
+// AURA — MVP database schema
+// Thai-first AI-Native Business Brain · AI Customer Service Employee
+//
+// Conventions:
+// - Primary keys: UUID (@db.Uuid) per DEV-002 decision.
+// - Multi-tenant: every business-scoped model carries businessId + index.
+// - Timestamps stored in UTC. Asia/Bangkok is a presentation default only.
+// - Money: Decimal (never Float). Product uses Decimal(12, 2).
+// - Soft delete: deletedAt on business/domain models; AuditLog is immutable.
+// - Field names are English; user-facing *values* may be Thai.
+// - Json used only where the shape is still evolving (AI payloads, metadata).
+//
+// Enums here mirror packages/shared/src/enums.ts one-to-one.
+// Validated with @prisma/prisma-schema-wasm (validate: OK).
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ---------------------------------------------------------------------------
+// Enums
+// ---------------------------------------------------------------------------
+
+enum UserStatus {
+  ACTIVE
+  INVITED
+  SUSPENDED
+  DISABLED
+}
+
+enum BusinessMemberRole {
+  OWNER
+  ADMIN
+  STAFF
+  VIEWER
+  AI_AGENT
+}
+
+enum ConversationStatus {
+  OPEN
+  WAITING_OWNER
+  WAITING_CUSTOMER
+  RESOLVED
+  CLOSED
+  ARCHIVED
+}
+
+enum ConversationChannel {
+  MANUAL_TEST
+  WEBSITE
+  FACEBOOK
+  LINE
+  INSTAGRAM
+  TIKTOK
+  SHOPEE
+  LAZADA
+  OTHER
+}
+
+enum MessageSender {
+  CUSTOMER
+  USER
+  AI
+  SYSTEM
+}
+
+enum MessageType {
+  TEXT
+  IMAGE
+  FILE
+  SYSTEM_NOTE
+  AI_SUGGESTION
+}
+
+enum AiActionType {
+  DRAFT_REPLY
+  SEND_MESSAGE
+  CREATE_TASK
+  UPDATE_CUSTOMER
+  RECOMMEND_PRODUCT
+  WRITE_MEMORY
+  SUMMARIZE_CONVERSATION
+  OTHER
+}
+
+enum AiActionStatus {
+  DRAFT
+  PENDING_APPROVAL
+  APPROVED
+  REJECTED
+  EXECUTED
+  FAILED
+  CANCELLED
+}
+
+enum ApprovalStatus {
+  PENDING
+  APPROVED
+  REJECTED
+  EXPIRED
+}
+
+enum TaskStatus {
+  TODO
+  IN_PROGRESS
+  DONE
+  CANCELLED
+}
+
+enum TaskPriority {
+  LOW
+  MEDIUM
+  HIGH
+  URGENT
+}
+
+enum AiMemoryType {
+  CUSTOMER_PREFERENCE
+  PURCHASE_PATTERN
+  CONVERSATION_SUMMARY
+  BUSINESS_RULE
+  PRODUCT_INSIGHT
+  FOLLOW_UP_NOTE
+  DECISION_NOTE
+  OTHER
+}
+
+enum Language {
+  TH
+  EN
+}
+
+enum SalesStage {
+  NEW_LEAD
+  INTERESTED
+  CONSIDERING
+  READY_TO_BUY
+  PURCHASED
+  LOST
+  FOLLOW_UP
+}
+
+enum ActorType {
+  USER
+  AI
+  SYSTEM
+}
+
+// ---------------------------------------------------------------------------
+// Identity
+// ---------------------------------------------------------------------------
+
+model User {
+  id           String     @id @default(uuid()) @db.Uuid
+  email        String     @unique
+  passwordHash String?
+  displayName  String?
+  status       UserStatus @default(INVITED)
+  language     Language   @default(TH)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  memberships BusinessMember[]
+
+  // Back-relations (named — multiple paths to the same model).
+  assignedTasks      Task[]     @relation("TaskAssignee")
+  createdTasks       Task[]     @relation("TaskCreator")
+  requestedApprovals Approval[] @relation("ApprovalRequester")
+  approvedApprovals  Approval[] @relation("ApprovalApprover")
+
+  @@index([status])
+}
+
+// ---------------------------------------------------------------------------
+// Tenant
+// ---------------------------------------------------------------------------
+
+model Business {
+  id   String  @id @default(uuid()) @db.Uuid
+  name String
+  slug String? @unique
+
+  // Business profile & rules — used by the AI to answer customers correctly.
+  businessType   String?
+  description    String?
+  toneOfVoice    String?
+  shippingPolicy String?
+  paymentPolicy  String?
+  openingHours   Json?
+  metadata       Json?
+
+  // Thai-first defaults
+  locale   String   @default("th-TH")
+  timezone String   @default("Asia/Bangkok")
+  currency String   @default("THB")
+  language Language @default(TH)
+
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
+
+  members       BusinessMember[]
+  customers     Customer[]
+  products      Product[]
+  productFaqs   ProductFAQ[]
+  conversations Conversation[]
+  messages      Message[]
+  aiMemories    AiMemory[]
+  aiActions     AiAction[]
+  approvals     Approval[]
+  tasks         Task[]
+  auditLogs     AuditLog[]
+
+  @@index([deletedAt])
+}
+
+model BusinessMember {
+  id         String             @id @default(uuid()) @db.Uuid
+  businessId String             @db.Uuid
+  userId     String             @db.Uuid
+  role       BusinessMemberRole @default(STAFF)
+
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
+
+  business Business @relation(fields: [businessId], references: [id])
+  user     User     @relation(fields: [userId], references: [id])
+
+  @@unique([businessId, userId])
+  @@index([businessId])
+  @@index([userId])
+}
+
+// ---------------------------------------------------------------------------
+// Commerce / CRM
+// ---------------------------------------------------------------------------
+
+model Customer {
+  id         String   @id @default(uuid()) @db.Uuid
+  businessId String   @db.Uuid
+  name       String?
+  email      String?
+  phone      String?
+  language   Language @default(TH)
+
+  // CRM / follow-up fields
+  sourceChannel  ConversationChannel?
+  externalId     String?
+  province       String?
+  tags           Json?
+  notes          String?
+  customerScore  Int?
+  lastContactAt  DateTime?
+  lastPurchaseAt DateTime?
+  nextFollowUpAt DateTime?
+
+  metadata Json?
+
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
+
+  business      Business       @relation(fields: [businessId], references: [id])
+  conversations Conversation[]
+  aiMemories    AiMemory[]
+  aiActions     AiAction[]
+  tasks         Task[]
+
+  @@index([businessId])
+  @@index([businessId, email])
+  @@index([businessId, sourceChannel])
+  @@index([businessId, nextFollowUpAt])
+}
+
+model Product {
+  id            String   @id @default(uuid()) @db.Uuid
+  businessId    String   @db.Uuid
+  name          String
+  description   String?
+  sku           String?
+  brand         String?
+  category      String?
+  price         Decimal  @default(0) @db.Decimal(12, 2)
+  cost          Decimal? @db.Decimal(12, 2)
+  currency      String   @default("THB")
+  stockQuantity Int      @default(0)
+  imageUrl      String?
+  isActive      Boolean  @default(true)
+  metadata      Json?
+
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
+
+  business Business     @relation(fields: [businessId], references: [id])
+  faqs     ProductFAQ[]
+  aiMemories AiMemory[]
+
+  @@unique([businessId, sku])
+  @@index([businessId])
+  @@index([businessId, isActive])
+  @@index([businessId, category])
+  @@index([businessId, brand])
+}
+
+model ProductFAQ {
+  id         String @id @default(uuid()) @db.Uuid
+  businessId String @db.Uuid
+  productId  String @db.Uuid
+  question   String
+  answer     String
+
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
+
+  business Business @relation(fields: [businessId], references: [id])
+  product  Product  @relation(fields: [productId], references: [id])
+
+  @@index([businessId])
+  @@index([productId])
+}
+
+// ---------------------------------------------------------------------------
+// Conversations
+// ---------------------------------------------------------------------------
+
+model Conversation {
+  id               String              @id @default(uuid()) @db.Uuid
+  businessId       String              @db.Uuid
+  customerId       String?             @db.Uuid
+  channel          ConversationChannel @default(MANUAL_TEST)
+  status           ConversationStatus  @default(OPEN)
+  salesStage       SalesStage          @default(NEW_LEAD)
+  subject          String?
+  summary          String?
+  externalThreadId String?
+  lastMessageAt    DateTime?
+
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
+
+  business   Business  @relation(fields: [businessId], references: [id])
+  customer   Customer? @relation(fields: [customerId], references: [id])
+  messages   Message[]
+  aiMemories AiMemory[]
+  aiActions  AiAction[]
+  tasks      Task[]
+
+  @@index([businessId])
+  @@index([businessId, status])
+  @@index([businessId, salesStage])
+  @@index([businessId, lastMessageAt])
+  @@index([customerId])
+}
+
+model Message {
+  id             String        @id @default(uuid()) @db.Uuid
+  businessId     String        @db.Uuid
+  conversationId String        @db.Uuid
+  sender         MessageSender
+  type           MessageType   @default(TEXT)
+  content        String
+  metadata       Json?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  business     Business     @relation(fields: [businessId], references: [id])
+  conversation Conversation @relation(fields: [conversationId], references: [id])
+
+  @@index([businessId])
+  @@index([conversationId])
+  @@index([conversationId, createdAt])
+}
+
+// ---------------------------------------------------------------------------
+// AI layer
+// ---------------------------------------------------------------------------
+
+model AiMemory {
+  id         String       @id @default(uuid()) @db.Uuid
+  businessId String       @db.Uuid
+  type       AiMemoryType
+  // Stable English key; user-facing value may be Thai.
+  key        String?
+  content    String
+  payload    Json?
+
+  // Business Memory Graph links (optional — memory may be business-wide).
+  customerId     String? @db.Uuid
+  conversationId String? @db.Uuid
+  productId      String? @db.Uuid
+  sourceType     String?
+  sourceId       String?
+  confidenceScore Int?
+  importanceScore Int?
+
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
+
+  business     Business      @relation(fields: [businessId], references: [id])
+  customer     Customer?     @relation(fields: [customerId], references: [id])
+  conversation Conversation? @relation(fields: [conversationId], references: [id])
+  product      Product?      @relation(fields: [productId], references: [id])
+
+  @@index([businessId])
+  @@index([businessId, type])
+  @@index([businessId, customerId])
+  @@index([businessId, conversationId])
+  @@index([businessId, productId])
+  @@index([businessId, importanceScore])
+}
+
+model AiAction {
+  id         String         @id @default(uuid()) @db.Uuid
+  businessId String         @db.Uuid
+  type       AiActionType
+  status     AiActionStatus @default(DRAFT)
+  payload    Json?
+
+  // Traceability — which customer/conversation this action concerns.
+  customerId      String? @db.Uuid
+  conversationId  String? @db.Uuid
+  title           String?
+  description     String?
+  confidenceScore Int?
+  reason          String?
+  createdByAiModel String?
+
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
+
+  business     Business      @relation(fields: [businessId], references: [id])
+  customer     Customer?     @relation(fields: [customerId], references: [id])
+  conversation Conversation? @relation(fields: [conversationId], references: [id])
+  approvals    Approval[]
+  createdTasks Task[]        @relation("TaskAiActionOrigin")
+
+  @@index([businessId])
+  @@index([businessId, status])
+  @@index([businessId, customerId])
+  @@index([businessId, conversationId])
+}
+
+model Approval {
+  id         String         @id @default(uuid()) @db.Uuid
+  businessId String         @db.Uuid
+  aiActionId String         @db.Uuid
+  status     ApprovalStatus @default(PENDING)
+  note       String?
+
+  // Auditability — who requested and who decided.
+  requestedByUserId String?   @db.Uuid
+  approvedByUserId  String?   @db.Uuid
+  decidedAt         DateTime?
+
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
+
+  business    Business @relation(fields: [businessId], references: [id])
+  aiAction    AiAction @relation(fields: [aiActionId], references: [id])
+  requestedBy User?    @relation("ApprovalRequester", fields: [requestedByUserId], references: [id])
+  approvedBy  User?    @relation("ApprovalApprover", fields: [approvedByUserId], references: [id])
+
+  @@index([businessId])
+  @@index([businessId, status])
+  @@index([aiActionId])
+}
+
+// ---------------------------------------------------------------------------
+// Operations
+// ---------------------------------------------------------------------------
+
+model Task {
+  id         String       @id @default(uuid()) @db.Uuid
+  businessId String       @db.Uuid
+  title      String
+  detail     String?
+  status     TaskStatus   @default(TODO)
+  priority   TaskPriority @default(MEDIUM)
+  dueAt      DateTime?
+
+  // Links — follow-up tasks connect to customers, conversations, and origin.
+  customerId          String? @db.Uuid
+  conversationId      String? @db.Uuid
+  assignedToUserId    String? @db.Uuid
+  createdByUserId     String? @db.Uuid
+  createdByAiActionId String? @db.Uuid
+
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
+
+  business     Business      @relation(fields: [businessId], references: [id])
+  customer     Customer?     @relation(fields: [customerId], references: [id])
+  conversation Conversation? @relation(fields: [conversationId], references: [id])
+  assignedTo   User?         @relation("TaskAssignee", fields: [assignedToUserId], references: [id])
+  createdBy    User?         @relation("TaskCreator", fields: [createdByUserId], references: [id])
+  createdByAiAction AiAction? @relation("TaskAiActionOrigin", fields: [createdByAiActionId], references: [id])
+
+  @@index([businessId])
+  @@index([businessId, status])
+  @@index([businessId, customerId])
+  @@index([businessId, conversationId])
+  @@index([businessId, dueAt])
+  @@index([businessId, priority])
+}
+
+model AuditLog {
+  id         String    @id @default(uuid()) @db.Uuid
+  businessId String    @db.Uuid
+  // Who performed the action: a user, the AI, or the system.
+  actorType  ActorType
+  actorId    String?
+  action     String
+  entityType String?
+  entityId   String?   @db.Uuid
+  metadata   Json?
+
+  // Immutable history: created only, never updated or soft-deleted.
+  createdAt DateTime @default(now())
+
+  business Business @relation(fields: [businessId], references: [id])
+
+  @@index([businessId])
+  @@index([businessId, createdAt])
+  @@index([entityType, entityId])
+}
